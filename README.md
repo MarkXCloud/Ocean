@@ -16,9 +16,10 @@
 * 线性层`Linear`，具有可学习参数`W`与`B`。
 * 卷积层`Conv2d`，采用`img2col`方法转换为`GEMM`实现，具有可学习的卷积核。
 * 池化层`MaxPooling`、`AveragePooling`与`GlobalAveragePooling`。
+* 批标准化层`BatchNorm2d`。
 * 激活函数，包括`Sigmoid`、`Tanh`、`Softmax`等。
 * 损失函数`MSE`与`CELoss`。
-* 优化器`SGD`。
+* 优化器`SGD`、`Adam`。
 
 在`/demo`中有基于Ocean框架的示例。
 

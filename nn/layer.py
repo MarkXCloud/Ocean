@@ -1,4 +1,4 @@
-from ops import Node, MatMul, Add, Variable, sigmoid, Convolve, MaxPool, AveragePool, ReshapeValue, softmax
+from ops import Node, MatMul, Add, Variable, sigmoid, Convolve, MaxPool, AveragePool, ReshapeValue, softmax,batchnorm2d,Multiply,relu
 from computation_graph import global_graph
 import numpy as np
 
@@ -35,6 +35,13 @@ class Sigmoid(NodeAdder):
 
     def forward(self, X):
         return sigmoid(X)
+
+class Relu(NodeAdder):
+    def __init__(self):
+        super(Relu, self).__init__()
+
+    def forward(self, X):
+        return relu(X)
 
 
 class Softmax(NodeAdder):
@@ -116,3 +123,13 @@ class Sequential(NodeAdder):
         for adders in self.adders[1:]:
             temp_var_list.append(adders(temp_var_list[-1]))
         return temp_var_list[-1]
+
+class BatchNorm2d(NodeAdder):
+    def __init__(self):
+        super().__init__()
+        self.gamma = Variable(is_Train=True)
+        self.gamma.set_value(np.ones(1,))
+        self.beta = Variable(is_Train=True)
+        self.beta.set_value(np.zeros(1,))
+    def forward(self, X: Node):
+        return Add(Multiply(self.gamma,batchnorm2d(X)),self.beta)

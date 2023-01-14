@@ -26,7 +26,7 @@ class Add(Operator):
         return self.grad
 
 
-class DotProduct(Operator):
+class Multiply(Operator):
 
     def calculate(self):
         if self.graph.cuda_device == 'cpu':
