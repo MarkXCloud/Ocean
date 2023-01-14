@@ -28,7 +28,6 @@ class Optimizer:
                         self.accumulated_grad[node]+=node.grad
                     else:
                         self.accumulated_grad[node] = cp.add(self.accumulated_grad[node], node.grad)
-        return self.loss_node.value
 
     def step(self):
         for node in self.graph.nodes:

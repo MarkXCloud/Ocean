@@ -94,8 +94,8 @@ if __name__ == '__main__':
             for data, label in zip(batch_data, batch_label):
                 x.set_value(data)
                 y.set_value(label)
-                e = optim.calculate_grad()
-                train_log.append(e)
+                optim.calculate_grad()
+                train_log.append(error.value)
 
             optim.step()
         error_log.append(np.mean(train_log))
