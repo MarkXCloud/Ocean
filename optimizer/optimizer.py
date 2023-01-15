@@ -5,10 +5,11 @@ from ops import Loss, Variable, batchnorm2d
 
 
 class Optimizer:
-    def __init__(self, graph: Graph, loss: Loss, lr: float):
+    def __init__(self, graph: Graph, loss: Loss, lr: float, weight_decay: float = 0.0):
         self.graph = graph
         self.loss_node = loss
         self.lr = lr
+        self.wd = weight_decay
         self.accumulated_grad = {}
 
     def zero_gradient(self):
@@ -26,10 +27,7 @@ class Optimizer:
                 if node not in self.accumulated_grad:
                     self.accumulated_grad[node] = node.grad
                 else:
-                    if self.graph.cuda_device == 'cpu':
-                        self.accumulated_grad[node] += node.grad
-                    else:
-                        self.accumulated_grad[node] = cp.add(self.accumulated_grad[node], node.grad)
+                    self.accumulated_grad[node] += node.grad
 
     def step(self):
         for node in self.graph.nodes:
@@ -45,10 +43,7 @@ class Optimizer:
 class SGD(Optimizer):
 
     def refresh(self, W, accumulated_grad):
-        if self.graph.cuda_device == 'cpu':
-            return W.value - self.lr * accumulated_grad
-        else:
-            return cp.subtract(W.value, cp.multiply(self.lr, accumulated_grad))
+        return W.value - self.lr * accumulated_grad - self.lr * self.wd * W.value
 
 
 class Adam(Optimizer):
@@ -61,25 +56,13 @@ class Adam(Optimizer):
         self.t = 0
 
     def refresh(self, W, accumulated_grad):
-        if self.graph.cuda_device == 'cpu':
-            if W not in self.m:
-                self.m[W] = (1 - self.beta1) * accumulated_grad
-                self.s[W] = (1 - self.beta2) * accumulated_grad ** 2
-            else:
-                self.m[W] = self.beta1 * self.m[W] + (1 - self.beta1) * accumulated_grad
-                self.s[W] = self.beta2 * self.s[W] + (1 - self.beta2) * accumulated_grad ** 2
-            self.t += 1
-            m_hat = self.m[W] / (1 - self.beta1 ** self.t)
-            s_hat = self.s[W] / (1 - self.beta2 ** self.t)
-            return W.value - self.lr * m_hat / (np.sqrt(s_hat) + self.eps)
+        if W not in self.m:
+            self.m[W] = (1 - self.beta1) * accumulated_grad
+            self.s[W] = (1 - self.beta2) * accumulated_grad ** 2
         else:
-            if W not in self.m:
-                self.m[W] = (1 - self.beta1) * accumulated_grad
-                self.s[W] = (1 - self.beta2) * accumulated_grad ** 2
-            else:
-                self.m[W] = cp.add(self.beta1 * self.m[W], cp.multiply((1 - self.beta1), accumulated_grad))
-                self.s[W] = cp.add(self.beta2 * self.s[W], cp.multiply((1 - self.beta2), cp.power(accumulated_grad, 2)))
-            self.t += 1
-            m_hat = cp.divide(self.m[W], cp.subtract(1, cp.power(self.beta1, self.t)))
-            s_hat = cp.divide(self.s[W], cp.subtract(1, cp.power(self.beta2, self.t)))
-            return cp.subtract(W.value, cp.multiply(self.lr, cp.divide(m_hat, cp.add(cp.sqrt(s_hat), self.eps))))
+            self.m[W] = self.beta1 * self.m[W] + (1 - self.beta1) * accumulated_grad
+            self.s[W] = self.beta2 * self.s[W] + (1 - self.beta2) * accumulated_grad ** 2
+        self.t += 1
+        m_hat = self.m[W] / (1 - self.beta1 ** self.t)
+        s_hat = self.s[W] / (1 - self.beta2 ** self.t)
+        return W.value - self.lr * m_hat / (np.sqrt(s_hat) + self.eps) - self.lr * self.wd * W.value
