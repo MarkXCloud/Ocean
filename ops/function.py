@@ -18,10 +18,9 @@ class Activation(Node):
             self.calculate_grad()
             if self.graph.cuda_device == 'cpu':
                 self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-                self.grad = self.current_grad * self.grad
             else:
                 self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)  # gather grad
-                self.grad = cp.multiply(self.current_grad, self.grad)
+            self.grad = self.current_grad * self.grad
 
         return self.grad
 
@@ -48,12 +47,7 @@ class sigmoid(Activation):
         return sigmoid_gpu(x)
 
     def calculate_grad(self):
-        if self.graph.cuda_device == 'cpu':
-            self.current_grad = self.value * (1 - self.value)
-        else:
-            self.current_grad = cp.multiply(self.value, cp.subtract(1, self.value))
-
-
+        self.current_grad = self.value * (1 - self.value)
 
 
 class tanh(Activation):
@@ -77,10 +71,7 @@ class tanh(Activation):
         return y
 
     def calculate_grad(self):
-        if self.graph.cuda_device == 'cpu':
-            self.current_grad = 1 - self.value ** 2
-        else:
-            self.current_grad = cp.subtract(1, cp.power(self.value, 2))
+        self.current_grad = 1 - self.value ** 2
 
 
 class relu(Activation):
@@ -91,11 +82,11 @@ class relu(Activation):
         else:
             self.value = relu.efficient_relu_gpu(self.parents[0].value)
 
-
     @staticmethod
     def efficient_relu(x):
         y = x.copy()
         return np.clip(y, a_min=0, a_max=None)
+
     @staticmethod
     def efficient_relu_gpu(x):
         y = x.copy()
@@ -103,9 +94,9 @@ class relu(Activation):
 
     def calculate_grad(self):
         if self.graph.cuda_device == 'cpu':
-            self.current_grad = np.where(self.value>0,1,0)
+            self.current_grad = np.where(self.value > 0, 1, 0)
         else:
-            self.current_grad = cp.where(self.value>0,1,0)
+            self.current_grad = cp.where(self.value > 0, 1, 0)
 
 
 class softmax(Activation):
@@ -127,27 +118,23 @@ class softmax(Activation):
         y = x.copy()
         y = cp.exp(y)
         y_sum = cp.sum(y)
-        return cp.divide(y , y_sum)
+        return cp.divide(y, y_sum)
 
     def calculate_grad(self):
+        grad = -self.value * self.value.T
         if self.graph.cuda_device == 'cpu':
-            grad = -self.value * self.value.T
-            for i in range(grad.shape[0]):
-                grad[i][i] += self.value[i]
-            self.current_grad = grad
+            grad += np.diag(self.value.flatten())
         else:
-            grad = cp.multiply(cp.multiply(-1,self.value),self.value.T)
-            grad = cp.add(grad,cp.diag(self.value.flatten()))
-            self.current_grad = grad
+            grad = cp.add(grad, cp.diag(self.value.flatten()))
+        self.current_grad = grad
 
     def backward(self, current_node):
         if self.judge_nan(self.grad):
             self.calculate_grad()
             if self.graph.cuda_device == 'cpu':
                 self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-                self.grad = self.current_grad @ self.grad
             else:
                 self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)  # gather grad
-                self.grad = cp.matmul(self.current_grad, self.grad)
+            self.grad = self.current_grad @ self.grad
 
         return self.grad

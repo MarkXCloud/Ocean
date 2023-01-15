@@ -210,17 +210,17 @@ def find_maxpool_position_gpu(img, result, grad, kernel_size, padding, stride, i
 
 
 class MaxPool(Node):
-    def __init__(self, *parents,  kernel_size=3, padding=0, stride=1, **kwargs):
+    def __init__(self, *parents, kernel_size=3, padding=0, stride=1, **kwargs):
         super(MaxPool, self).__init__(*parents, **kwargs)
         assert len(parents) == 1
 
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
-        self.have_calculate_shape=False
+        self.have_calculate_shape = False
         self.img_shape = ()
         self.padding_shape = ()
-        self.result_shape =()
+        self.result_shape = ()
 
     def calculate(self):
         if not self.have_calculate_shape:
@@ -231,7 +231,7 @@ class MaxPool(Node):
                                                        padded_h=self.padding_shape[-2],
                                                        padded_w=self.padding_shape[-1], kernel_size=self.kernel_size,
                                                        stride=self.stride)
-            self.have_calculate_shape=True
+            self.have_calculate_shape = True
         if self.graph.cuda_device == 'cpu':
             self.value = maxpool(img=self.parents[0].value, kernel_size=self.kernel_size, stride=self.stride,
                                  padding=self.padding,
@@ -351,7 +351,6 @@ class AveragePool(Node):
                                                  kernel_size=self.kernel_size, padding=self.padding,
                                                  stride=self.stride, img_shape=self.padding_shape,
                                                  result_shape=self.result_shape)
-            return grad_in_position
         else:
             if self.judge_nan(self.grad):
                 self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]),
@@ -360,7 +359,21 @@ class AveragePool(Node):
                                                      kernel_size=self.kernel_size, padding=self.padding,
                                                      stride=self.stride, img_shape=self.padding_shape,
                                                      result_shape=self.result_shape)
-            return grad_in_position
+        return grad_in_position
+
+
+class GlobalAveragePool(Node):
+    def __init__(self, *parents, **kwargs):
+        super().__init__(*parents, **kwargs)
+        self.kernel_size = -1
+
+    def calculate(self):
+        if self.kernel_size < 0:
+            self.kernel_size = self.parents[0].value.shape[-1]
+        self.value = self.parents[0].value.mean(axis=(-2, -1))
+
+    def backward(self, parent):
+        return self.kernel_size ** (-2) * self.grad
 
 
 class ReshapeValue(Node):
@@ -374,11 +387,9 @@ class ReshapeValue(Node):
         self.value = self.parents[0].value.reshape(self.target_shape)
 
     def backward(self, parent):
-        if self.graph.cuda_device == 'cpu':
-            if self.judge_nan(self.grad):
+        if self.judge_nan(self.grad):
+            if self.graph.cuda_device == 'cpu':
                 self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-            return self.grad.reshape(self.origin_shape)
-        else:
-            if self.judge_nan(self.grad):
-                self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)  # gather grad
-            return self.grad.reshape(self.origin_shape)
+            else:
+                self.grad = cp.sum(cp.array([child.backward(self) for child in self.children]), axis=0)  # gather grad
+        return self.grad.reshape(self.origin_shape)

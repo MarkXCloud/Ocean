@@ -1,4 +1,5 @@
-from ops import Node, MatMul, Add, Variable, sigmoid, Convolve, MaxPool, AveragePool, ReshapeValue, softmax,batchnorm2d,Multiply,relu
+from ops import Node, Variable
+import ops
 from computation_graph import global_graph
 import numpy as np
 
@@ -26,7 +27,7 @@ class Linear(NodeAdder):
             self.B.set_value(value=np.random.normal(size=(output_dim, 1)))
 
     def forward(self, X):
-        return Add(MatMul(self.W, X), self.B) if self.use_bias else MatMul(self.W, X)
+        return ops.Add(ops.MatMul(self.W, X), self.B) if self.use_bias else ops.MatMul(self.W, X)
 
 
 class Sigmoid(NodeAdder):
@@ -34,14 +35,15 @@ class Sigmoid(NodeAdder):
         super(Sigmoid, self).__init__()
 
     def forward(self, X):
-        return sigmoid(X)
+        return ops.sigmoid(X)
+
 
 class Relu(NodeAdder):
     def __init__(self):
         super(Relu, self).__init__()
 
     def forward(self, X):
-        return relu(X)
+        return ops.relu(X)
 
 
 class Softmax(NodeAdder):
@@ -49,7 +51,7 @@ class Softmax(NodeAdder):
         super(Softmax, self).__init__()
 
     def forward(self, X):
-        return softmax(X)
+        return ops.softmax(X)
 
 
 class Conv2d(NodeAdder):
@@ -62,8 +64,8 @@ class Conv2d(NodeAdder):
         self.kernel.set_value(np.random.normal(scale=0.1, size=(out_channels, in_channels, kernel_size, kernel_size)))
 
     def forward(self, X):
-        return Convolve(self.kernel, X, kernel_size=self.kernel_size, stride=self.stride,
-                        padding=self.padding)
+        return ops.Convolve(self.kernel, X, kernel_size=self.kernel_size, stride=self.stride,
+                            padding=self.padding)
 
 
 class MaxPooling(NodeAdder):
@@ -74,8 +76,8 @@ class MaxPooling(NodeAdder):
         self.padding = padding
 
     def forward(self, X):
-        return MaxPool(X, kernel_size=self.kernel_size, stride=self.stride,
-                       padding=self.padding)
+        return ops.MaxPool(X, kernel_size=self.kernel_size, stride=self.stride,
+                           padding=self.padding)
 
 
 class AveragePooling(NodeAdder):
@@ -86,18 +88,14 @@ class AveragePooling(NodeAdder):
         self.padding = padding
 
     def forward(self, X):
-        return AveragePool(X, kernel_size=self.kernel_size, stride=self.stride,
-                           padding=self.padding)
+        return ops.AveragePool(X, kernel_size=self.kernel_size, stride=self.stride,
+                               padding=self.padding)
 
 
 class GlobalAveragePolling(NodeAdder):
-    def __init__(self, kernel_size):
-        super().__init__()
-        self.kernel_size = kernel_size
 
     def forward(self, X):
-        return AveragePool(X, kernel_size=self.kernel_size, stride=1,
-                           padding=0)
+        return ops.GlobalAveragePool(X)
 
 
 class Reshape(NodeAdder):
@@ -108,7 +106,7 @@ class Reshape(NodeAdder):
         self.target_shape = target_shape
 
     def forward(self, X):
-        return ReshapeValue(X, img_shape=self.origin_shape, target_shape=self.target_shape)
+        return ops.ReshapeValue(X, img_shape=self.origin_shape, target_shape=self.target_shape)
 
 
 class Sequential(NodeAdder):
@@ -124,12 +122,23 @@ class Sequential(NodeAdder):
             temp_var_list.append(adders(temp_var_list[-1]))
         return temp_var_list[-1]
 
+
 class BatchNorm2d(NodeAdder):
     def __init__(self):
         super().__init__()
         self.gamma = Variable(is_Train=True)
-        self.gamma.set_value(np.ones(1,))
+        self.gamma.set_value(np.ones(1, ))
         self.beta = Variable(is_Train=True)
-        self.beta.set_value(np.zeros(1,))
+        self.beta.set_value(np.zeros(1, ))
+
     def forward(self, X: Node):
-        return Add(Multiply(self.gamma,batchnorm2d(X)),self.beta)
+        return ops.Add(ops.Multiply(self.gamma, ops.batchnorm2d(X)), self.beta)
+
+
+class Dropout(NodeAdder):
+    def __init__(self, drop_rate: float):
+        super().__init__()
+        self.drop_rate = drop_rate
+
+    def forward(self, X: Node):
+        return ops.dropout(self.drop_rate, X)
