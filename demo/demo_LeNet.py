@@ -89,6 +89,7 @@ if __name__ == '__main__':
     train_log = []
     error_log = []
     for i in range(E):
+        m.set_train_mode()
         for batch_data, batch_label in tqdm(train_loader, desc=f'epoch {i}'):
             optim.zero_gradient()
             for data, label in zip(batch_data, batch_label):
@@ -103,6 +104,7 @@ if __name__ == '__main__':
         train_log = []
 
         pred_list = []
+        m.set_eval_mode()
         for batch_data, batch_label in tqdm(test_loader):
             for data, label in zip(batch_data, batch_label):
                 x.set_value(data)

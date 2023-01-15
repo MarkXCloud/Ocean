@@ -14,6 +14,16 @@ class NodeAdder:
     def __call__(self, X, *args, **kwargs):
         return self.forward(X)
 
+    def set_train_mode(self):
+        for node in self.model_graph.nodes:
+            if isinstance(node, ops.Norm):
+                node.set_train_mode()
+
+    def set_eval_mode(self):
+        for node in self.model_graph.nodes:
+            if isinstance(node, ops.Norm):
+                node.set_eval_mode()
+
 
 class Linear(NodeAdder):
     def __init__(self, input_dim, output_dim, use_bias=True):
