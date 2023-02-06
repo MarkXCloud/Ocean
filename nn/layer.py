@@ -34,7 +34,7 @@ class Linear(NodeAdder):
         self.use_bias = use_bias
         if use_bias:
             self.B = Variable(is_Train=True)
-            self.B.set_value(value=np.random.normal(size=(output_dim, 1)))
+            self.B.set_value(value=np.random.normal(size=(output_dim, 1),scale=0.1))
 
     def forward(self, X):
         return ops.Add(ops.MatMul(self.W, X), self.B) if self.use_bias else ops.MatMul(self.W, X)

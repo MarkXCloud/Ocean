@@ -6,28 +6,17 @@ from itertools import product
 from .basic_calculate import Operator
 
 
-def pad_img(img, padding):
+def pad_img(img, padding, P):
     """img: C x H x W -> C x (H+padding) x (W+padding), in zero padding"""
-    return np.pad(img, ((0, 0), (padding, padding), (padding, padding)), 'constant', constant_values=0)
+    return P.pad(img, ((0, 0), (padding, padding), (padding, padding)), 'constant', constant_values=0)
 
 
-def pad_img_gpu(img, padding):
-    return cp.pad(img, ((0, 0), (padding, padding), (padding, padding)), 'constant', constant_values=0)
-
-
-def img2col(img, kernel_size, stride):
+def img2col(img, kernel_size, stride, P):
     """expand image to column formation for convolution"""
     _, h, w = img.shape
-    return np.array(
-        [img[:, i:i + kernel_size, j:j + kernel_size].flatten() for i in range(0, h - kernel_size + 1, stride) for
-         j in range(0, w - kernel_size + 1, stride)])
-
-
-def img2col_gpu(img, kernel_size, stride):
-    _, h, w = img.shape
-    return cp.array(
-        [img[:, i:i + kernel_size, j:j + kernel_size].flatten() for i in cp.arange(0, h - kernel_size + 1, stride)
-         for j in cp.arange(0, w - kernel_size + 1, stride)])
+    return P.array(
+        [img[:, i:i + kernel_size, j:j + kernel_size].flatten() for i in P.arange(0, h - kernel_size + 1, stride) for
+         j in P.arange(0, w - kernel_size + 1, stride)])
 
 
 def kernel2col(kernel):
@@ -36,26 +25,14 @@ def kernel2col(kernel):
     return kernel.reshape(c, -1).T
 
 
-def col2img(result_col, kernel_size, stride, target_shape):
+def col2img(result_col, kernel_size, stride, target_shape, P):
     """fold a column back to the original image"""
     c, h, w = target_shape
-    result = np.zeros(shape=target_shape)
-    ij = product(range(0, h - kernel_size + 1, stride), range(0, w - kernel_size + 1, stride))
-    for iandj, channel in zip(ij, range(c)):
+    result = P.zeros(shape=target_shape)
+    ij = product(P.arange(0, h - kernel_size + 1, stride), P.arange(0, w - kernel_size + 1, stride))
+    for iandj, channel in zip(ij, P.arange(c)):
         i, j = iandj[0], iandj[1],
         result[:, i:i + kernel_size, j:j + kernel_size] += result_col[channel].reshape(-1, kernel_size, kernel_size)
-    return result
-
-
-def col2img_gpu(result_col, kernel_size, stride, target_shape):
-    c, h, w = target_shape
-    result = cp.zeros(shape=target_shape)
-    ij = product(cp.arange(0, h - kernel_size + 1, stride), cp.arange(0, w - kernel_size + 1, stride))
-    for iandj, channel in zip(ij, cp.arange(c)):
-        i, j = iandj[0], iandj[1],
-        result[:, i:i + kernel_size, j:j + kernel_size] = cp.add(result[:, i:i + kernel_size, j:j + kernel_size],
-                                                                 result_col[channel].reshape(-1, kernel_size,
-                                                                                             kernel_size))
     return result
 
 
@@ -64,18 +41,11 @@ def col2kernel(result, target_shape):
     return result.T.reshape(target_shape)
 
 
-def convolution(kernel, img, kernel_size, stride, padding, result_shape):
+def convolution(kernel, img, kernel_size, stride, padding, result_shape, P):
     """basic convolution operation, use img2col to conv in matmul, then fold the result back"""
     kernel_col = kernel2col(kernel)
-    img_col = img2col(pad_img(img, padding), kernel_size, stride)
+    img_col = img2col(pad_img(img, padding, P), kernel_size, stride, P)
     result_col = img_col @ kernel_col
-    return result_col.T.reshape(result_shape)
-
-
-def convolution_gpu(kernel, img, kernel_size, stride, padding, result_shape):
-    kernel_col = kernel2col(kernel)
-    img_col = img2col_gpu(pad_img(img, padding), kernel_size, stride)
-    result_col = cp.matmul(img_col, kernel_col)
     return result_col.T.reshape(result_shape)
 
 
@@ -108,60 +78,38 @@ class Convolve(Operator):
                                                        padded_w=self.padding_shape[-1], kernel_size=self.kernel_size,
                                                        stride=self.stride)
             self.have_calculate_shape = True
-        if self.graph.cuda_device == 'cpu':
-            self.value = convolution(kernel=self.parents[0].value, img=self.parents[1].value,
-                                     kernel_size=self.kernel_size, stride=self.stride, padding=self.padding,
-                                     result_shape=self.result_shape)
-        else:
-            self.value = convolution_gpu(kernel=self.parents[0].value, img=self.parents[1].value,
-                                         kernel_size=self.kernel_size, stride=self.stride, padding=self.padding,
-                                         result_shape=self.result_shape)
+        self.value = convolution(kernel=self.parents[0].value, img=self.parents[1].value,
+                                 kernel_size=self.kernel_size, stride=self.stride, padding=self.padding,
+                                 result_shape=self.result_shape, P=self.P)
 
     def backward(self, parent):
-        if self.graph.cuda_device == 'cpu':
-            if self.judge_nan(self.grad):
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-            grad2col = img2col(img=self.grad, kernel_size=1, stride=1)
-            if parent.name == self.parents[0].name:  # grad of kernel, img2col the grad, backward as matrix
-                result_grad = img2col(pad_img(self.parents[1].value, self.padding), kernel_size=self.kernel_size,
-                                      stride=self.stride).T @ grad2col
-                return result_grad.T.reshape(self.parents[0].value.shape)
+        if self.judge_nan(self.grad):
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
+                                   axis=0)  # gather grad
+        grad2col = img2col(img=self.grad, kernel_size=1, stride=1, P=self.P)
 
-            else:
-                result_grad = grad2col @ kernel2col(self.parents[0].value).T
-                result_grad = col2img(result_grad, self.kernel_size, self.stride, self.padding_shape)[:,
-                              self.padding:-self.padding, self.padding:-self.padding] \
-                    if self.padding != 0 \
-                    else col2img(result_grad,
-                                 self.kernel_size,
-                                 self.stride,
-                                 self.img_shape)  # cut off padding part
-                return result_grad
+        if parent.name == self.parents[0].name:  # grad of kernel, img2col the grad, backward as matrix
+            result_grad = img2col(pad_img(self.parents[1].value, self.padding, P=self.P), kernel_size=self.kernel_size,
+                                  stride=self.stride, P=self.P).T @ grad2col
+            return result_grad.T.reshape(self.parents[0].value.shape)
+
         else:
-            if self.judge_nan(self.grad):
-                self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)  # gather grad
-            grad2col = img2col(img=self.grad, kernel_size=1, stride=1)
-            if parent.name == self.parents[0].name:
-                result_grad = cp.matmul(
-                    img2col_gpu(pad_img_gpu(self.parents[1].value, self.padding), kernel_size=self.kernel_size,
-                                stride=self.stride).T, grad2col)
-                return result_grad.T.reshape(self.parents[0].value.shape)
-            else:
-                result_grad = cp.matmul(grad2col, kernel2col(self.parents[0].value).T)
-                result_grad = col2img_gpu(result_grad, self.kernel_size, self.stride, self.padding_shape)[:,
-                              self.padding:-self.padding, self.padding:-self.padding] \
-                    if self.padding != 0 \
-                    else col2img_gpu(result_grad,
-                                     self.kernel_size,
-                                     self.stride,
-                                     self.padding_shape)  # cut off padding part
-                return result_grad
+            result_grad = grad2col @ kernel2col(self.parents[0].value).T
+            result_grad = col2img(result_grad, self.kernel_size, self.stride, self.padding_shape, P=self.P)[:,
+                          self.padding:-self.padding, self.padding:-self.padding] \
+                if self.padding != 0 \
+                else col2img(result_grad,
+                             self.kernel_size,
+                             self.stride,
+                             self.img_shape,
+                             P=self.P)  # cut off padding part
+            return result_grad
 
 
-def maxpool(img, kernel_size, padding, stride, result_shape):
-    padded_img = pad_img(img, padding)
-    ij = product(range(result_shape[-2]), range(result_shape[-1]))
-    result = np.empty(shape=result_shape)
+def maxpool(img, kernel_size, padding, stride, result_shape, P):
+    padded_img = pad_img(img, padding, P)
+    ij = product(P.arange(result_shape[-2]), P.arange(result_shape[-1]))
+    result = P.empty(shape=result_shape)
     for iandj in ij:
         i, j = iandj[0], iandj[1]
         result[:, i, j] = padded_img[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size].max(
@@ -169,43 +117,19 @@ def maxpool(img, kernel_size, padding, stride, result_shape):
     return result
 
 
-def maxpool_gpu(img, kernel_size, padding, stride, result_shape):
-    padded_img = pad_img_gpu(img, padding)
-    ij = product(cp.arange(result_shape[-2]), cp.arange(result_shape[-1]))
-    result = cp.empty(shape=result_shape)
-    for iandj in ij:
-        i, j = iandj[0], iandj[1]
-        result[:, i, j] = padded_img[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size].max(
-            axis=(-2, -1))
-    return result
-
-
-def find_maxpool_position(img, result, grad, kernel_size, padding, stride, img_shape, result_shape):
+def find_maxpool_position(img, result, grad, kernel_size, padding, stride, img_shape, result_shape, P):
     """find the corresponding position during the maxpool process, and pass the grad to that position"""
-    mask = np.zeros(shape=img_shape)
-    ij = product(range(result_shape[-2]), range(result_shape[-1]))
+    mask = P.zeros(shape=img_shape)
+    ij = product(P.arange(result_shape[-2]), P.arange(result_shape[-1]))
     for iandj in ij:
         i, j = iandj[0], iandj[1]
         # newaxis is to assist board-casting
         index = img[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size] == result[:, i, j,
-                                                                                                    np.newaxis,
-                                                                                                    np.newaxis]
+                                                                                                    P.newaxis,
+                                                                                                    P.newaxis]
         mask[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size] += index * grad[:, i, j,
-                                                                                                     np.newaxis,
-                                                                                                     np.newaxis]
-    return mask[:, padding:-padding, padding:-padding] if padding else mask
-
-
-def find_maxpool_position_gpu(img, result, grad, kernel_size, padding, stride, img_shape, result_shape):
-    mask = cp.zeros(shape=img_shape)
-    ij = product(cp.arange(result_shape[-2]), cp.arange(result_shape[-1]))
-    for iandj in ij:
-        i, j = iandj[0], iandj[1]
-        index = cp.equal(img[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size],
-                         result[:, i, j, cp.newaxis, cp.newaxis])
-        mask[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size] = cp.add(
-            mask[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size],
-            index * grad[:, i, j, cp.newaxis, cp.newaxis])
+                                                                                                     P.newaxis,
+                                                                                                     P.newaxis]
     return mask[:, padding:-padding, padding:-padding] if padding else mask
 
 
@@ -232,39 +156,28 @@ class MaxPool(Node):
                                                        padded_w=self.padding_shape[-1], kernel_size=self.kernel_size,
                                                        stride=self.stride)
             self.have_calculate_shape = True
-        if self.graph.cuda_device == 'cpu':
-            self.value = maxpool(img=self.parents[0].value, kernel_size=self.kernel_size, stride=self.stride,
-                                 padding=self.padding,
-                                 result_shape=self.result_shape)
-        else:
-            self.value = maxpool_gpu(img=self.parents[0].value, kernel_size=self.kernel_size, stride=self.stride,
-                                     padding=self.padding,
-                                     result_shape=self.result_shape)
+        self.value = maxpool(img=self.parents[0].value, kernel_size=self.kernel_size, stride=self.stride,
+                             padding=self.padding,
+                             result_shape=self.result_shape, P=self.P)
 
     def backward(self, parent):
-        if self.graph.cuda_device == 'cpu':
-            if self.judge_nan(self.grad):
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-            grad_in_position = find_maxpool_position(pad_img(self.parents[0].value, self.padding), result=self.value,
-                                                     grad=self.grad,
-                                                     kernel_size=self.kernel_size, padding=self.padding,
-                                                     stride=self.stride, img_shape=self.padding_shape,
-                                                     result_shape=self.result_shape)
-            return grad_in_position
-        else:
-            if self.judge_nan(self.grad):
-                self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)  # gather grad
-            grad_in_position = find_maxpool_position_gpu(self.parents[0].value, result=self.value, grad=self.grad,
-                                                         kernel_size=self.kernel_size, padding=self.padding,
-                                                         stride=self.stride, img_shape=self.padding_shape,
-                                                         result_shape=self.result_shape)
-            return grad_in_position
+        if self.judge_nan(self.grad):
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
+                                   axis=0)  # gather grad
+        grad_in_position = find_maxpool_position(pad_img(self.parents[0].value, self.padding, self.P),
+                                                 result=self.value,
+                                                 grad=self.grad,
+                                                 kernel_size=self.kernel_size, padding=self.padding,
+                                                 stride=self.stride, img_shape=self.padding_shape,
+                                                 result_shape=self.result_shape,
+                                                 P=self.P)
+        return grad_in_position
 
 
-def average_pool(img, kernel_size, padding, stride, result_shape):
-    padded_img = pad_img(img, padding)
-    ij = product(range(result_shape[-2]), range(result_shape[-1]))
-    result = np.empty(shape=result_shape)
+def average_pool(img, kernel_size, padding, stride, result_shape, P):
+    padded_img = pad_img(img, padding, P)
+    ij = product(P.arange(result_shape[-2]), P.arange(result_shape[-1]))
+    result = P.empty(shape=result_shape)
     for iandj in ij:
         i, j = iandj[0], iandj[1]
         result[:, i, j] = padded_img[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size].mean(
@@ -272,42 +185,17 @@ def average_pool(img, kernel_size, padding, stride, result_shape):
     return result
 
 
-def average_pool_gpu(img, kernel_size, padding, stride, result_shape):
-    padded_img = pad_img_gpu(img, padding)
-    ij = product(range(result_shape[-2]), range(result_shape[-1]))
-    result = cp.empty(shape=result_shape)
-    for iandj in ij:
-        i, j = iandj[0], iandj[1]
-        result[:, i, j] = padded_img[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size].mean(
-            axis=(-2, -1))
-    return result
-
-
-def average_pool_grad(grad, kernel_size, padding, stride, img_shape, result_shape):
+def average_pool_grad(grad, kernel_size, padding, stride, img_shape, result_shape, P):
     """calculate the grad passing by the average pool"""
-    mask = np.zeros(shape=img_shape)
+    mask = P.zeros(shape=img_shape)
     scale = 1 / kernel_size ** 2
-    ij = product(range(result_shape[-2]), range(result_shape[-1]))
+    ij = product(P.arange(result_shape[-2]), P.arange(result_shape[-1]))
     for iandj in ij:
         i, j = iandj[0], iandj[1]
         # newaxis is to assist board-casting
         mask[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size] += scale * grad[:, i, j,
-                                                                                                     np.newaxis,
-                                                                                                     np.newaxis]
-    return mask[:, padding:-padding, padding:-padding] if padding else mask
-
-
-def average_pool_grad_gpu(grad, kernel_size, padding, stride, img_shape, result_shape):
-    """calculate the grad passing by the average pool"""
-    mask = cp.zeros(shape=img_shape)
-    scale = 1 / kernel_size ** 2
-    ij = product(range(result_shape[-2]), range(result_shape[-1]))
-    for iandj in ij:
-        i, j = iandj[0], iandj[1]
-        # newaxis is to assist board-casting
-        mask[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size] = cp.add(
-            mask[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size],
-            cp.multiply(scale, grad[:, i, j, cp.newaxis, cp.newaxis]))
+                                                                                                     P.newaxis,
+                                                                                                     P.newaxis]
     return mask[:, padding:-padding, padding:-padding] if padding else mask
 
 
@@ -334,31 +222,20 @@ class AveragePool(Node):
                                                        padded_w=self.padding_shape[-1], kernel_size=self.kernel_size,
                                                        stride=self.stride)
             self.have_calculate_shape = True
-        if self.graph.cuda_device == 'cpu':
-            self.value = average_pool(img=self.parents[0].value, kernel_size=self.kernel_size, stride=self.stride,
-                                      padding=self.padding,
-                                      result_shape=self.result_shape)
-        else:
-            self.value = average_pool_gpu(img=self.parents[0].value, kernel_size=self.kernel_size, stride=self.stride,
-                                          padding=self.padding,
-                                          result_shape=self.result_shape)
+        self.value = average_pool(img=self.parents[0].value, kernel_size=self.kernel_size, stride=self.stride,
+                                  padding=self.padding,
+                                  result_shape=self.result_shape,
+                                  P=self.P)
 
     def backward(self, parent):
-        if self.graph.cuda_device == 'cpu':
-            if self.judge_nan(self.grad):
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-            grad_in_position = average_pool_grad(grad=self.grad,
-                                                 kernel_size=self.kernel_size, padding=self.padding,
-                                                 stride=self.stride, img_shape=self.padding_shape,
-                                                 result_shape=self.result_shape)
-        else:
-            if self.judge_nan(self.grad):
-                self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]),
+        if self.judge_nan(self.grad):
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
                                    axis=0)  # gather grad
-            grad_in_position = average_pool_grad_gpu(grad=self.grad,
-                                                     kernel_size=self.kernel_size, padding=self.padding,
-                                                     stride=self.stride, img_shape=self.padding_shape,
-                                                     result_shape=self.result_shape)
+        grad_in_position = average_pool_grad(grad=self.grad,
+                                             kernel_size=self.kernel_size, padding=self.padding,
+                                             stride=self.stride, img_shape=self.padding_shape,
+                                             result_shape=self.result_shape,
+                                             P=self.P)
         return grad_in_position
 
 
@@ -373,7 +250,10 @@ class GlobalAveragePool(Node):
         self.value = self.parents[0].value.mean(axis=(-2, -1))
 
     def backward(self, parent):
-        return self.kernel_size ** (-2) * self.grad
+        if self.judge_nan(self.grad):
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
+                                   axis=0)  # gather grad
+        return self.grad[..., self.P.newaxis, self.P.newaxis] / (self.kernel_size ** 2)
 
 
 class ReshapeValue(Node):
@@ -388,8 +268,6 @@ class ReshapeValue(Node):
 
     def backward(self, parent):
         if self.judge_nan(self.grad):
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-            else:
-                self.grad = cp.sum(cp.array([child.backward(self) for child in self.children]), axis=0)  # gather grad
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
+                                   axis=0)  # gather grad
         return self.grad.reshape(self.origin_shape)

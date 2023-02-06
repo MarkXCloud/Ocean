@@ -14,12 +14,9 @@ class Add(Operator):
     def calculate(self):
         self.value = self.parents[0].value + self.parents[1].value
 
-    def backward(self, current_node):
+    def backward(self, parent):
         if self.judge_nan(self.grad):
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-            else:
-                self.grad = cp.sum(cp.array([child.backward(self) for child in self.children]), axis=0)  # gather grad
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]), axis=0)  # gather grad
         return self.grad
 
 
@@ -30,10 +27,7 @@ class Multiply(Operator):
 
     def backward(self, parent):
         if self.judge_nan(self.grad):
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)
-            else:
-                self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),axis=0)  # gather grad
         if parent.name == self.parents[0].name:
             return self.parents[1].value * self.grad
         else:
@@ -49,10 +43,7 @@ class MatMul(Operator):
 
     def backward(self, parent):
         if self.judge_nan(self.grad):
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)
-            else:
-                self.grad = cp.sum(cp.array([child.backward(self) for child in self.children]), axis=0)  # gather grad
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),axis=0)  # gather grad
         if parent is self.parents[0]:
             return self.grad @ self.parents[1].value.T
         else:
@@ -66,15 +57,8 @@ class Subtract(Operator):
 
     def backward(self, parent):
         if self.judge_nan(self.grad):
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)
-            else:
-                self.grad = cp.sum(cp.array([child.backward(self) for child in self.children]), axis=0)  # gather grad
-
-        if parent.name == self.parents[0].name:
-            return self.grad
-        else:
-            return -self.grad
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),axis=0)  # gather grad
+        return self.grad if parent.name == self.parents[0].name else -self.grad
 
 
 class Divide(Operator):
@@ -84,11 +68,7 @@ class Divide(Operator):
 
     def backward(self, parent):
         if self.judge_nan(self.grad):
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)
-            else:
-                self.grad = cp.sum(cp.array([child.backward(self) for child in self.children]), axis=0)  # gather grad
-
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),axis=0)  # gather grad
         if parent.name == self.parents[0].name:
             return (1 / self.parents[1].value) * self.grad
         else:

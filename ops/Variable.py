@@ -17,11 +17,11 @@ class Variable(Node):
 
     def backward(self, current_node):
         if self.judge_nan(self.grad):
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-            else:
-                self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
+                                   axis=0)  # gather grad
         return self.grad
 
     def set_gpu(self, index):
         self.value = cp.asarray(self.value)
+        self.P = cp
+        self.use_cuda = True

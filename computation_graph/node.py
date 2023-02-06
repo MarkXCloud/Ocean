@@ -1,6 +1,7 @@
 from .graph import global_graph
 import numpy as np
 import cupy as cp
+import ops
 
 _name = 1
 
@@ -30,6 +31,8 @@ class Node:
         self.grad = np.nan  # grad from loss to current node
         self.current_grad = np.nan  # grad from the output of current node to current input
         self.is_Train = False
+        self.use_cuda = False
+        self.P = np
 
         for parent in self.parents:
             parent.children.append(self)
@@ -73,22 +76,30 @@ class Node:
         raise NotImplementedError
 
     def zero_gradient(self):
-        self.grad = np.nan if self.graph.cuda_device == 'cpu' else cp.nan
+        self.grad = self.P.nan
 
     def zero_value(self, recursively=True):
         """reset the value, and recursively reset the value of its children"""
-        self.value = np.nan if self.graph.cuda_device == 'cpu' else cp.nan
+        self.value = self.P.nan
         if recursively:
             for child in self.children:
                 child.zero_value()
 
     def judge_nan(self, value):
-        if self.graph.cuda_device == 'cpu':
-            return np.isnan(value).all()
-        else:
-            return cp.asnumpy(cp.isnan(value)).all()
+        return self.P.isnan(value).all()
 
     def set_gpu(self, index):
         self.value = cp.asarray(self.value)
         self.grad = cp.asarray(self.grad)
         self.current_grad = cp.asarray(self.current_grad)
+        self.P = cp
+        self.use_cuda = True
+
+    def __add__(self, other):
+        return ops.Add(self,other)
+    def __sub__(self, other):
+        return ops.Subtract(self,other)
+    def __mul__(self, other):
+        return ops.Multiply(self,other)
+    def __truediv__(self, other):
+        return ops.Divide(self,other)

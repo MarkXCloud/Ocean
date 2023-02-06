@@ -16,19 +16,15 @@ class Activation(Node):
         """
         if self.judge_nan(self.grad):
             self.calculate_grad()
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-            else:
-                self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)  # gather grad
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),axis=0)  # gather grad
             self.grad = self.current_grad * self.grad
-
         return self.grad
 
 
 class sigmoid(Activation):
 
     def calculate(self):
-        if self.graph.cuda_device == 'cpu':
+        if not self.use_cuda:
             self.value = sigmoid.efficient_sigmoid(self.parents[0].value)
         else:
             self.value = sigmoid.efficient_sigmoid_gpu(self.parents[0].value)
@@ -122,19 +118,13 @@ class softmax(Activation):
 
     def calculate_grad(self):
         grad = -self.value * self.value.T
-        if self.graph.cuda_device == 'cpu':
-            grad += np.diag(self.value.flatten())
-        else:
-            grad = cp.add(grad, cp.diag(self.value.flatten()))
+        grad += self.P.diag(self.value.flatten())
         self.current_grad = grad
 
     def backward(self, current_node):
         if self.judge_nan(self.grad):
             self.calculate_grad()
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-            else:
-                self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)  # gather grad
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),axis=0)  # gather grad
             self.grad = self.current_grad @ self.grad
 
         return self.grad
