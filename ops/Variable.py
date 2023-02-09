@@ -8,7 +8,7 @@ class Variable(Node):
         super(Variable, self).__init__(**kwargs)
         self.is_Train = is_Train
 
-    def set_value(self, value: np.ndarray):
+    def set_value(self, value):
         """
         set value of variable
         """

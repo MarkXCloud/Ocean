@@ -16,7 +16,8 @@ class Activation(Node):
         """
         if self.judge_nan(self.grad):
             self.calculate_grad()
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),axis=0)  # gather grad
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
+                                   axis=0)  # gather grad
             self.grad = self.current_grad * self.grad
         return self.grad
 
@@ -49,22 +50,7 @@ class sigmoid(Activation):
 class tanh(Activation):
 
     def calculate(self):
-        if self.graph.cuda_device == 'cpu':
-            self.value = tanh.efficient_tanh(self.parents[0].value)
-        else:
-            self.value = tanh.efficient_tanh_gpu(self.parents[0].value)
-
-    @staticmethod
-    def efficient_tanh(x):
-        y = x.copy()
-        y = np.tanh(y)
-        return y
-
-    @staticmethod
-    def efficient_tanh_gpu(x):
-        y = x.copy()
-        y = cp.tanh(y)
-        return y
+        self.value = self.P.tanh(self.parents[0].value)
 
     def calculate_grad(self):
         self.current_grad = 1 - self.value ** 2
@@ -73,48 +59,17 @@ class tanh(Activation):
 class relu(Activation):
 
     def calculate(self):
-        if self.graph.cuda_device == 'cpu':
-            self.value = relu.efficient_relu(self.parents[0].value)
-        else:
-            self.value = relu.efficient_relu_gpu(self.parents[0].value)
-
-    @staticmethod
-    def efficient_relu(x):
-        y = x.copy()
-        return np.clip(y, a_min=0, a_max=None)
-
-    @staticmethod
-    def efficient_relu_gpu(x):
-        y = x.copy()
-        return cp.clip(y, a_min=0, a_max=None)
+        self.value = self.P.clip(self.parents[0].value, a_min=0, a_max=None)
 
     def calculate_grad(self):
-        if self.graph.cuda_device == 'cpu':
-            self.current_grad = np.where(self.value > 0, 1, 0)
-        else:
-            self.current_grad = cp.where(self.value > 0, 1, 0)
+        self.current_grad = self.P.where(self.value > 0, 1, 0)
 
 
 class softmax(Activation):
     def calculate(self):
-        if self.graph.cuda_device == 'cpu':
-            self.value = softmax.efficient_softmax(self.parents[0].value)
-        else:
-            self.value = softmax.efficient_softmax_gpu(self.parents[0].value)
-
-    @staticmethod
-    def efficient_softmax(x):
-        y = x.copy()
-        y = np.exp(y)
-        y_sum = np.sum(y)
-        return y / y_sum
-
-    @staticmethod
-    def efficient_softmax_gpu(x):
-        y = x.copy()
-        y = cp.exp(y)
-        y_sum = cp.sum(y)
-        return cp.divide(y, y_sum)
+        y = self.P.exp(self.parents[0].value)
+        y_sum = self.P.sum(y)
+        self.value = y / y_sum
 
     def calculate_grad(self):
         grad = -self.value * self.value.T

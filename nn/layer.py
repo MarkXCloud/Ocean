@@ -126,8 +126,7 @@ class Sequential(NodeAdder):
         assert len(self.adders) != 0, 'Empty Sequential!'
 
     def forward(self, X):
-        temp_var_list = []
-        temp_var_list.append(self.adders[0](X))
+        temp_var_list = [self.adders[0](X)]
         for adders in self.adders[1:]:
             temp_var_list.append(adders(temp_var_list[-1]))
         return temp_var_list[-1]
