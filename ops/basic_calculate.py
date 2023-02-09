@@ -15,9 +15,7 @@ class Add(Operator):
         self.value = self.parents[0].value + self.parents[1].value
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         return self.grad
 
 
@@ -27,9 +25,7 @@ class Multiply(Operator):
         self.value = self.parents[0].value * self.parents[1].value
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         if parent.name == self.parents[0].name:
             return self.parents[1].value * self.grad
         else:
@@ -44,9 +40,7 @@ class MatMul(Operator):
         self.value = self.parents[0].value @ self.parents[1].value
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         if parent is self.parents[0]:
             return self.grad @ self.parents[1].value.T
         else:
@@ -59,9 +53,7 @@ class Subtract(Operator):
         self.value = self.parents[0].value - self.parents[1].value
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         return self.grad if parent.name == self.parents[0].name else -self.grad
 
 
@@ -71,9 +63,7 @@ class Divide(Operator):
         self.value = self.parents[0].value / self.parents[1].value
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         if parent.name == self.parents[0].name:
             return (1 / self.parents[1].value) * self.grad
         else:
@@ -85,7 +75,5 @@ class Transpose(Node):
         self.value = self.parents[0].value.T
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         return self.grad.T

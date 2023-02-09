@@ -1,6 +1,4 @@
 from computation_graph import Node
-import numpy as np
-import cupy as cp
 
 
 class Loss(Node):
@@ -18,7 +16,7 @@ class MSELoss(Loss):
 
 class CrossEntropyLoss(Loss):
     def calculate(self):
-        self.value = -(self.parents[1].value * np.log(self.parents[0].value + 1e-16)).sum()
+        self.value = -(self.parents[1].value * self.P.log(self.parents[0].value + 1e-16)).sum()
 
     def backward(self, parent):
         if parent.name == self.parents[0].name:

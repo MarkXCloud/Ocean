@@ -1,6 +1,4 @@
 from computation_graph import Node
-import numpy as np
-import cupy as cp
 import math
 from itertools import product
 from .basic_calculate import Operator
@@ -83,9 +81,7 @@ class Convolve(Operator):
                                  result_shape=self.result_shape, P=self.P)
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         grad2col = img2col(img=self.grad, kernel_size=1, stride=1, P=self.P)
 
         if parent.name == self.parents[0].name:  # grad of kernel, img2col the grad, backward as matrix
@@ -161,9 +157,7 @@ class MaxPool(Node):
                              result_shape=self.result_shape, P=self.P)
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         grad_in_position = find_maxpool_position(pad_img(self.parents[0].value, self.padding, self.P),
                                                  result=self.value,
                                                  grad=self.grad,
@@ -228,9 +222,7 @@ class AveragePool(Node):
                                   P=self.P)
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         grad_in_position = average_pool_grad(grad=self.grad,
                                              kernel_size=self.kernel_size, padding=self.padding,
                                              stride=self.stride, img_shape=self.padding_shape,
@@ -250,9 +242,7 @@ class GlobalAveragePool(Node):
         self.value = self.parents[0].value.mean(axis=(-2, -1))
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         return self.grad[..., self.P.newaxis, self.P.newaxis] / (self.kernel_size ** 2)
 
 
@@ -267,7 +257,5 @@ class ReshapeValue(Node):
         self.value = self.parents[0].value.reshape(self.target_shape)
 
     def backward(self, parent):
-        if self.judge_nan(self.grad):
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
-                                   axis=0)  # gather grad
+        self.gather_grad()
         return self.grad.reshape(self.origin_shape)

@@ -1,5 +1,4 @@
 from computation_graph import Node
-import numpy as np
 import cupy as cp
 
 

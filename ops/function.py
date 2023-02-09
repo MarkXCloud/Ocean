@@ -1,6 +1,5 @@
 from computation_graph import Node
 import numpy as np
-import cupy as cp
 from cupyx.scipy.special import expit as sigmoid_gpu
 
 
@@ -14,12 +13,17 @@ class Activation(Node):
         Recursively gather the gradient of children nodes, and multiplied with current gradient according to chain rule
         :return:grad, pass to the previous node
         """
+        self.gather_grad()
+        return self.grad
+
+    def gather_grad(self):
         if self.judge_nan(self.grad):
             self.calculate_grad()
             self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),
                                    axis=0)  # gather grad
             self.grad = self.current_grad * self.grad
-        return self.grad
+        else:
+            pass
 
 
 class sigmoid(Activation):
@@ -76,10 +80,11 @@ class softmax(Activation):
         grad += self.P.diag(self.value.flatten())
         self.current_grad = grad
 
-    def backward(self, current_node):
+    def gather_grad(self):
         if self.judge_nan(self.grad):
             self.calculate_grad()
-            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),axis=0)  # gather grad
+            # gather grad
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]), axis=0)
             self.grad = self.current_grad @ self.grad
-
-        return self.grad
+        else:
+            pass

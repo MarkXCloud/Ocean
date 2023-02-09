@@ -100,7 +100,6 @@ if __name__ == '__main__':
 
             optim.step()
         error_log.append(np.mean(train_log))
-        # print(f' training error {error_log[-1]}')
         train_log = []
 
         pred_list = []

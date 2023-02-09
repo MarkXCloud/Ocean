@@ -64,13 +64,8 @@ class Node:
         e.g.:
         if self.judge_nan(self.grad):
             self.calculate_grad()
-            if self.graph.cuda_device == 'cpu':
-                self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
-                self.grad = self.current_grad @ self.grad
-            else:
-                self.grad = cp.sum(cp.asarray([child.backward(self) for child in self.children]), axis=0)  # gather grad
-                self.grad = cp.matmul(self.current_grad, self.grad)
-
+            self.grad = np.sum([child.backward(self) for child in self.children], axis=0)  # gather grad
+            self.grad = self.current_grad @ self.grad
         return self.grad
         """
 
@@ -88,6 +83,13 @@ class Node:
 
     def judge_nan(self, value):
         return self.P.isnan(value).all()
+
+    def gather_grad(self):
+        if self.judge_nan(self.grad):
+            # gather grad
+            self.grad = self.P.sum(self.P.asarray([child.backward(self) for child in self.children]),axis=0)
+        else:
+            pass
 
     def set_gpu(self, index):
         self.value = cp.asarray(self.value)
