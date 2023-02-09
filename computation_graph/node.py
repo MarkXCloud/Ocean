@@ -15,7 +15,8 @@ def fresh_name():
 
 class Node:
     """
-    Node in the computation graph, play a part as basic computation functions such as linear, conv, activation as nd so on.
+    Node in the computation graph, play a part as basic computation functions such as linear, conv,
+    activation and so on.
     """
 
     def __init__(self, *parents, **kwargs):
@@ -96,10 +97,13 @@ class Node:
         self.use_cuda = True
 
     def __add__(self, other):
-        return ops.Add(self,other)
+        return ops.Add(self, other)
+
     def __sub__(self, other):
-        return ops.Subtract(self,other)
+        return ops.Subtract(self, other)
+
     def __mul__(self, other):
-        return ops.Multiply(self,other)
+        return ops.Multiply(self, other)
+
     def __truediv__(self, other):
-        return ops.Divide(self,other)
+        return ops.Divide(self, other)
