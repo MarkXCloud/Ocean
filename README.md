@@ -45,22 +45,22 @@ loss = nn.MSE()
 error = loss(pred=pred, target=y)
 optim = SGD(graph=m.model_graph, loss=error, lr=0.1)
 
-    for i in range(E):
-        # train 
-        m.set_train_mode()
-        for batch_data, batch_label in tqdm(train_loader, desc=f'epoch {i}'):
-            optim.zero_gradient()
-            for data, label in zip(batch_data, batch_label):
-                x.set_value(data)
-                y.set_value(label)
-                optim.calculate_grad()
-        # test
-        m.set_eval_mode()
-        for batch_data, batch_label in tqdm(test_loader):
-            for data, label in zip(batch_data, batch_label):
-                x.set_value(data)
-                y.set_value(label)
-                error.forward()
+for i in range(E):
+    # train 
+    m.set_train_mode()
+    for batch_data, batch_label in tqdm(train_loader, desc=f'epoch {i}'):
+        optim.zero_gradient()
+        for data, label in zip(batch_data, batch_label):
+            x.set_value(data)
+            y.set_value(label)
+            optim.calculate_grad()
+    # test
+    m.set_eval_mode()
+    for batch_data, batch_label in tqdm(test_loader):
+        for data, label in zip(batch_data, batch_label):
+            x.set_value(data)
+            y.set_value(label)
+            error.forward()
 ```
 
 在`/demo`中有基于Ocean框架的更多示例。
