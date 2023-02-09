@@ -107,3 +107,6 @@ class Node:
 
     def __truediv__(self, other):
         return ops.Divide(self, other)
+
+    def __matmul__(self, other):
+        return ops.MatMul(self,other)
