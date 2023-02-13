@@ -25,11 +25,12 @@ def kernel2col(kernel):
 
 def col2img(result_col, kernel_size, stride, target_shape, P):
     """fold a column back to the original image"""
-    c, h, w = target_shape
+    _, h, w = target_shape
+    c = result_col.shape[0]
     result = P.zeros(shape=target_shape)
     ij = product(P.arange(0, h - kernel_size + 1, stride), P.arange(0, w - kernel_size + 1, stride))
     for iandj, channel in zip(ij, P.arange(c)):
-        i, j = iandj[0], iandj[1],
+        i, j = iandj[0], iandj[1]
         result[:, i:i + kernel_size, j:j + kernel_size] += result_col[channel].reshape(-1, kernel_size, kernel_size)
     return result
 
@@ -243,7 +244,7 @@ class GlobalAveragePool(Node):
 
     def backward(self, parent):
         self.gather_grad()
-        return self.grad[..., self.P.newaxis, self.P.newaxis] / (self.kernel_size ** 2)
+        return self.P.tile(self.grad[..., self.P.newaxis, self.P.newaxis] / (self.kernel_size ** 2),(self.kernel_size,self.kernel_size))
 
 
 class ReshapeValue(Node):

@@ -30,7 +30,7 @@ class batchnorm2d(Norm):
 
     def backward(self, parent):
         self.gather_grad()
-        return self.grad * (self.batch_std + self.eps)
+        return self.grad / (self.batch_std + self.eps)
 
     def refresh(self):
         new_mean = self.P.mean(self.P.asarray(self.batch_list), axis=0)

@@ -98,6 +98,9 @@ class Node:
         self.P = cp
         self.use_cuda = True
 
+    def name_as(self,name:str):
+        self.name = name
+
     def __add__(self, other):
         return ops.Add(self, other)
 
