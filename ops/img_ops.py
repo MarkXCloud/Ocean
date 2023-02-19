@@ -29,8 +29,7 @@ def col2img(result_col, kernel_size, stride, target_shape, P):
     c = result_col.shape[0]
     result = P.zeros(shape=target_shape)
     ij = product(P.arange(0, h - kernel_size + 1, stride), P.arange(0, w - kernel_size + 1, stride))
-    for iandj, channel in zip(ij, P.arange(c)):
-        i, j = iandj[0], iandj[1]
+    for (i, j), channel in zip(ij, P.arange(c)):
         result[:, i:i + kernel_size, j:j + kernel_size] += result_col[channel].reshape(-1, kernel_size, kernel_size)
     return result
 
@@ -107,8 +106,7 @@ def maxpool(img, kernel_size, padding, stride, result_shape, P):
     padded_img = pad_img(img, padding, P)
     ij = product(P.arange(result_shape[-2]), P.arange(result_shape[-1]))
     result = P.empty(shape=result_shape)
-    for iandj in ij:
-        i, j = iandj[0], iandj[1]
+    for (i, j) in ij:
         result[:, i, j] = padded_img[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size].max(
             axis=(-2, -1))
     return result
@@ -118,8 +116,7 @@ def find_maxpool_position(img, result, grad, kernel_size, padding, stride, img_s
     """find the corresponding position during the maxpool process, and pass the grad to that position"""
     mask = P.zeros(shape=img_shape)
     ij = product(P.arange(result_shape[-2]), P.arange(result_shape[-1]))
-    for iandj in ij:
-        i, j = iandj[0], iandj[1]
+    for (i, j) in ij:
         # newaxis is to assist board-casting
         index = img[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size] == result[:, i, j,
                                                                                                     P.newaxis,
@@ -173,8 +170,7 @@ def average_pool(img, kernel_size, padding, stride, result_shape, P):
     padded_img = pad_img(img, padding, P)
     ij = product(P.arange(result_shape[-2]), P.arange(result_shape[-1]))
     result = P.empty(shape=result_shape)
-    for iandj in ij:
-        i, j = iandj[0], iandj[1]
+    for (i,j) in ij:
         result[:, i, j] = padded_img[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size].mean(
             axis=(-2, -1))
     return result
@@ -185,8 +181,7 @@ def average_pool_grad(grad, kernel_size, padding, stride, img_shape, result_shap
     mask = P.zeros(shape=img_shape)
     scale = 1 / kernel_size ** 2
     ij = product(P.arange(result_shape[-2]), P.arange(result_shape[-1]))
-    for iandj in ij:
-        i, j = iandj[0], iandj[1]
+    for (i, j) in ij:
         # newaxis is to assist board-casting
         mask[:, i * stride:i * stride + kernel_size, j * stride:j * stride + kernel_size] += scale * grad[:, i, j,
                                                                                                      P.newaxis,
